@@ -7,6 +7,7 @@ import folium
 from streamlit_folium import folium_static
 from datetime import datetime
 import plotly.express as px
+import os
 
 image = Image.open('ft-logo.png')
 st.image(image, use_column_width=False)
@@ -47,46 +48,91 @@ st.write(f"Overall, the dataframe has {len(df)} entries, making it quite a subst
 
 st.dataframe(df.head())
 
-#sideboarding 
+# Set default values for the slider
+default_values = (50, 300)
 
+# min and max values
+min_price = st.number_input("Min Price",  df.price.min(), df.price.max(), default_values[0], step=1)
+max_price = st.number_input("Max Price", df.price.min(), df.price.max(), default_values[1], step=1)
 
-with st.sidebar.expander("Price range"):
-    # Set default values for the slider
-    default_values = (50, 300)
-
-    # min and max values
-    min_price = st.number_input("Min Price",  df.price.min(), df.price.max(), default_values[0], step=1)
-    max_price = st.number_input("Max Price", df.price.min(), df.price.max(), default_values[1], step=1)
-
-    # Set default values for the slider based on user input
-    values = st.slider(
-        "Price range",
-        df.price.min(),
-        df.price.max(),
-        (min_price, max_price),
-        step=1
-    )
+# Set default values for the slider based on user input
+values = st.slider(
+    "Price range",
+    df.price.min(),
+    df.price.max(),
+    (min_price, max_price),
+    step=1
+)
 
 min_price, max_price = values
+
+
 boroughs = st.sidebar.multiselect("Borough selection", df['neighbourhood_group'].unique())
 
-def string_b():
-    nice_looking_string = ""
-    if not boroughs:
-        nice_looking_string = "You have not selected any boroghs to visualize. "
-    else: 
-        nice_looking_string += "You have selected: "
-        for b in boroughs:
-            nice_looking_string += b
-            nice_looking_string += " - "
-        nice_looking_string += "as your boroughs. "
+filtered_neighborhoods = df[df['neighbourhood_group'].isin(boroughs)]['neighbourhood'].unique()
 
-    return nice_looking_string
-boroughs_sentence = string_b()
+selected_neighborhoods = st.sidebar.multiselect("Neighborhood selection", sorted(filtered_neighborhoods))
 
 
-st.write(f"Currently, the selected Price Range is from `{min_price}` to `{max_price}`. {boroughs_sentence}You can change this at any time in the sidebar")
+
+def string_b(large, small):
+    ret_str = str()
+    if not large and not small:
+        ret_str = "You have not selected any boroghs/neighborhoods to visualize. "
+    elif large or small: 
+        ret_str += "You have selected: "
+        if large:
+            ret_str += ", ".join(large)
+            ret_str += " as your borough(s); "
+        if small:
+            ret_str += ", ".join(small)
+            ret_str += " as your neighborhood(s). "
+    return ret_str
 
 
-#Dashboarding
+boroughs_sentence = string_b(boroughs, selected_neighborhoods)
 
+st.write(f"Now, onto the dashboarding part. Currently, the selected price range is from `{min_price}` to `{max_price}`. {boroughs_sentence}You can change this at any time in the sidebar")
+
+filtered_data = df.query(f"price>={min_price}").query(f"price<={max_price}").query(f"neighbourhood_group == {boroughs}").query(f"neighbourhood == {selected_neighborhoods}")
+
+if len(filtered_data) == 0:
+    st.markdown(f"""
+
+    There currently {len(filtered_data)} Airbnb units available in your given price range of \${min_price} to \${max_price}. 
+    Perhaps you would like to change your price range or location filters?
+
+    """)
+else: 
+        st.markdown(f"""
+
+    There currently {len(filtered_data)} Airbnb units available in {" - ".join(boroughs)} in the neighborhoods 
+    {", ".join(selected_neighborhoods)} in your given price range of \${min_price} to \${max_price}.
+    
+
+    """)
+
+st.dataframe(filtered_data)
+
+
+st.header("Let's see where these units are")
+
+listings = filtered_data[["name", "neighbourhood", "latitude", "longitude", "host_name", 'room_type', 'price']].dropna(how="any")
+
+m = folium.Map(location=(40.748065, -73.734173), zoom_start=10)
+
+
+for index, row in listings.iterrows():
+    name = row["name"]
+    hood = row["neighbourhood"]
+    lat = row["latitude"]
+    lon = row["longitude"]
+    host = row["host_name"]
+    room = row["room_type"]
+    price = row["price"]
+
+    folium.Marker(
+        (lat, lon), popup=f"NAME: {name} \n\nNEIGHBORHOOD: {hood} \n\nHOST NAME: {host} \n\nROOM TYPE: {room}", tooltip=f"Price: \${price}"
+    ).add_to(m)
+
+folium_static(m)

@@ -1,13 +1,9 @@
 import streamlit as st
 from PIL import Image
 import pandas as pd
-import math
 import numpy as np
 import folium
 from streamlit_folium import folium_static
-from datetime import datetime
-import plotly.express as px
-import os
 
 image = Image.open('ft-logo.png')
 st.image(image, use_column_width=False)
